@@ -196,12 +196,29 @@
   }
 
   // ── ZFC filter bar ───────────────────────────────────────────────────────────
+  // Mirrors production drawer structure: label = .zfc_group_label.vc-hover-text-underline
+  // containing a <span>, a .zfc_drpdwn chevron, and the hover underline line; the
+  // engine (#3866 initZFCDrawer) turns the label into an accordion toggle.
   function filterGroup(key, label, isPast) {
     var g = el('div', 'zfc_group' + (isPast ? ' zfc_group--past' : ''), { 'data-zfc-filter': key });
-    g.appendChild(el('span', 'zfc_group_label', null, esc(label)));
-    var chips = el('div', 'zfc_chips');
-    if (isPast) chips.appendChild(el('button', 'zfc_chip', { type: 'button', 'aria-pressed': 'false' }, 'Past Events'));
-    g.appendChild(chips);
+    if (isPast) {
+      // Past is an inline toggle chip (with the animated check), no dropdown label.
+      var chipsP = el('div', 'zfc_chips');
+      var btn = el('button', 'zfc_chip', { type: 'button', 'aria-pressed': 'false' });
+      btn.appendChild(el('span', 'zfc_chip__check', null,
+        '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.2l2.6 2.6L10 3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'));
+      btn.appendChild(txt('Past Events'));
+      chipsP.appendChild(btn);
+      g.appendChild(chipsP);
+      return g;
+    }
+    var lbl = el('div', 'zfc_group_label vc-hover-text-underline');
+    lbl.appendChild(el('span', null, null, esc(label)));
+    lbl.appendChild(el('div', 'zfc_drpdwn', null,
+      '<svg viewBox="0 0 10 6" aria-hidden="true"><path d="M0 0l5 6 5-6z"/></svg>'));
+    lbl.appendChild(el('span', 'vc-hover-text-underline__line'));
+    g.appendChild(lbl);
+    g.appendChild(el('div', 'zfc_chips')); // chips filled by the engine's buildZFCOptions()
     return g;
   }
 
@@ -250,21 +267,22 @@
   }
 
   // ── mount ─────────────────────────────────────────────────────────────────────
-  // Production CSS pre-hides .emh_listings_parent (opacity:0) and reveals via the
-  // GSAP entrance. Scoped to #zoo-live so we never touch production /partnerships/,
-  // force our sandbox cards + controls visible regardless of the animation.
-  function injectRevealStyle() {
-    if (document.getElementById('zoo-live-reveal')) return;
+  // Host layout only — NO opacity/visibility force here (that would keep
+  // filtered-out cards visible and break Isotope's layout). Adds the page's
+  // container max-width + breathing room at the top, scoped to #zoo-live.
+  function injectHostStyle() {
+    if (document.getElementById('zoo-live-host-style')) return;
     var st = document.createElement('style');
-    st.id = 'zoo-live-reveal';
+    st.id = 'zoo-live-host-style';
     st.textContent =
-      '#zoo-live .emh_listings_parent,#zoo-live .zfc_group,#zoo-live .zfc_bar_actions > *,#zoo-live [data-vc-anim]' +
-      '{opacity:1 !important;visibility:visible !important;}';
+      '#zoo-live{display:block;box-sizing:border-box;padding:48px 24px 80px;}' +
+      '#zoo-live .emh_listings_container{max-width:var(--emh-max-width,1400px);margin:0 auto;}' +
+      '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
 
   function render() {
-    injectRevealStyle();
+    injectHostStyle();
     var root = document.getElementById('zoo-live') || document.body;
     root.innerHTML = '';
     if (!DATA.length) {
@@ -272,27 +290,33 @@
         'No published event properties found (or none passed to the shortcode).'));
       return;
     }
-    root.appendChild(buildBar());
+    // Wrap in the production container (max-width, centered) — fixes full-bleed list.
+    var container = el('div', 'emh_listings_container');
+    container.appendChild(buildBar());
     var repeater = el('div', 'emh_listings_repeater grid-view');
     DATA.forEach(function (item) { repeater.appendChild(card(item)); });
-    root.appendChild(repeater);
+    container.appendChild(repeater);
+    root.appendChild(container);
     window.ZOO_LIVE_RENDERED = true;
   }
 
-  // Safety net: the CSS pre-hides cards/controls and reveals them via the GSAP
-  // entrance. If the ticker stalls the page would stay blank — force visible.
-  function revealSafety() {
-    var sel = '.emh_listings_parent, .zfc_group, .zfc_bar_actions > *, [data-vc-anim]';
-    if (window.gsap && gsap.killTweensOf) { try { gsap.killTweensOf(sel); } catch (e) {} }
-    document.querySelectorAll(sel).forEach(function (node) {
-      if (getComputedStyle(node).display === 'none') return;
-      node.style.opacity = '1';
-      node.style.visibility = 'visible';
-      node.style.transform = 'none';
-      node.style.scale = 'none';
+  // Last-resort reveal ONLY when the entrance animation totally failed to run
+  // (e.g. GSAP never loaded) — i.e. every card is still invisible. During normal
+  // operation (some cards shown, others filtered out) this is a strict no-op, so
+  // it never fights the filter.
+  function revealSafetyIfTotallyBlank() {
+    var cards = document.querySelectorAll('#zoo-live .emh_listings_parent');
+    if (!cards.length) return;
+    var anyVisible = false;
+    cards.forEach(function (c) {
+      var cs = getComputedStyle(c);
+      if (cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.02) anyVisible = true;
     });
+    if (anyVisible) return; // entrance worked and/or filtering is active — leave it alone
+    if (window.gsap && gsap.killTweensOf) { try { gsap.killTweensOf('#zoo-live .emh_listings_parent'); } catch (e) {} }
+    cards.forEach(function (c) { c.style.opacity = '1'; c.style.visibility = 'visible'; c.style.transform = 'none'; });
   }
 
   render();
-  setTimeout(revealSafety, 1600);
+  setTimeout(revealSafetyIfTotallyBlank, 2500);
 })();
