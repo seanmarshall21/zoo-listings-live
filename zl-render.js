@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.5.8
+ * v0.5.9
  * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,9 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.5.9 — 2026-08-04 — Dark scrim: use background-color (not the background shorthand)
+ *                        + explicit transparent in .theme-light, so the light<->dark
+ *                        transition is clean and never sticks dim.
  * v0.5.8 — 2026-08-04 — Three fixes, all rooted in the stalled GSAP ticker on this
  *                        page (same cause as the v0.5.7 blank page):
  *                        (1) VIEW TOGGLE — the engine's setView() does its real work
@@ -69,7 +72,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.8';
+  var ZL_RENDER_VERSION = '0.5.9';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -346,10 +349,13 @@
       // Oxygen /partnerships/ page. Transparent in light mode; tinted to the theme bg in
       // dark. Fixed + behind content (the shader canvas is z-index:-1; this sits just in
       // front of it and behind everything in #zoo-live).
+      // Use background-COLOR (not the shorthand) so the light↔dark transition is clean
+      // and never sticks. Explicit transparent in light mode as well.
       '#zoo-live-dark-scrim{position:fixed;inset:0;z-index:-1;pointer-events:none;' +
-        'background:transparent;transition:background .35s ease;}' +
+        'background-color:transparent;transition:background-color .35s ease;}' +
+      'html.theme-light #zoo-live-dark-scrim{background-color:transparent;}' +
       'html.theme-dark #zoo-live-dark-scrim{' +
-        'background:color-mix(in srgb,var(--zoo-bg,#282828) 82%,transparent);}' +
+        'background-color:color-mix(in srgb,var(--zoo-bg,#282828) 82%,transparent);}' +
       // Theme the inline brand-logo SVG (paths often have no fill → inherit currentColor).
       '#zoo-live .emh_listings_item_logo svg,#zoo-live .emh_listings_item_logo svg path{fill:currentColor;}' +
       '#zoo-live .emh_listings_item_logo svg{max-height:32px;width:auto;height:auto;display:block;}' +
