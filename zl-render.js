@@ -1,44 +1,30 @@
 /**
  * zl-render.js
- * v0.2.0
+ * v0.3.0
  * 2026-08-03
  *
- * v0.2.0 — REAL IN-PAGE ELEMENTS (no iframe). Namespaced classes (zl_*) so the
- *          site-wide production assets (#3866/#3867, all .emh_* and .zfc_* selectors)
- *          can never touch these elements. Renders straight into #zoo-live in the
- *          host document, so it inherits the page's Adobe fonts + --zoo-* and --emh-*
- *          theme variables natively. Removed all iframe height-messaging.
- * v0.1.2 — removed the literal bracketed shortcode token from the header comment.
- * v0.1.1 — revealSafety() fallback for a stalled GSAP entrance.
+ * v0.3.0 — Renderer rewritten to emit the EXACT current production card DOM
+ *          (extracted live from /partnerships/): single .zl_emh_listings_repeater_view
+ *          wrapper, .zl_emh_listings_tag_cont > .zl_emh_listings_chip_tag chips,
+ *          .zl_emh_listings_meta_eyebrow + .zl_emh_listings_meta_data groups,
+ *          .zl_emh_listings_genre_cont > .zl_emh_listings_chip_tag_large, and the full
+ *          .zl_emh_listings_footer (EST/Loc/Yrs + Instagram/Website + CONTACT cta).
+ *          The prior version used stale class names from layer-stack-v2, so the CSS
+ *          couldn't match it. This makes the namespaced production CSS fully apply.
+ * v0.2.0 — REAL IN-PAGE ELEMENTS (no iframe). Namespaced classes (zl_*).
+ * v0.1.x — earlier iframe-era versions.
  *
- * Zoo Agency — Live Sandbox renderer.
+ * Zoo Agency — Live Sandbox renderer. Runs in the host page BEFORE zl-listings.js.
+ * Reads window.ZOO_LIVE_DATA and builds real, namespaced (zl_*) elements into
+ * #zoo-live, then the engine wires filters / view toggle / search / hover video.
  *
- * Runs in the host page, BEFORE zl-listings.js (the namespaced engine).
- * Reads window.ZOO_LIVE_DATA (a plain array of listing objects injected by the
- * WordPress zoo_listings_live shortcode) and builds the DOM the engine expects:
- *
- *   .zl_zfc_bar_wrap  → .zl_zfc_bar_fltr_wrap → .zl_zfc_wrap → .zl_zfc_group[data-zfc-filter]
- *                    .zl_zfc_bar_actions   → search widget + grid/list toggles
- *   .zl_emh_listings_repeater → .zl_emh_listings_parent[data-brand|venue|year|is-past|start-date]
- *                    → tile view + list view (mirrors Oxygen post 815 layer stack)
- *
- * Because we set the data-* attributes and inject tag/genre chips directly from
- * the JSON at render time, this REPLACES both the Oxygen repeater markup AND
- * WPCode #3589 for the sandbox surface.
- *
- * After the DOM is built, zl-listings.js is injected; its init() wires up
- * filters, view toggle, search, and hover video. The shortcode then calls
- * emhListings_refresh() once for the entrance animation.
- *
- * (Do NOT write the shortcode in [brackets] anywhere in this file — it gets
- * inlined into the page and WordPress would recursively re-expand it.)
+ * (Do NOT write the shortcode in [brackets] anywhere in this file.)
  */
 (function () {
   'use strict';
 
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
-  // ── tiny DOM helper ─────────────────────────────────────────────────────────
   function el(tag, cls, attrs, html) {
     var n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -48,83 +34,78 @@
   }
   function esc(s) {
     return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  function txt(s) { return document.createTextNode(String(s == null ? '' : s)); }
 
   // ── date block (month / day range / year), or TBD ───────────────────────────
   function dateBlock(d) {
     d = d || {};
     var wrap = el('div', 'zl_emh_listings_cont_date');
     if (d.tbd) {
-      wrap.appendChild(el('div', 'zl_emh_listings_date_tbd', null, esc(d.tbdText || 'TBD')));
-      if (d.year) wrap.appendChild(el('span', 'zl_emh_listings_date_year', null, esc(d.year)));
+      wrap.appendChild(el('div', 'zl_emh_listings_date_month', null, esc(d.tbdText || 'TBD')));
+      if (d.year) wrap.appendChild(el('div', 'zl_emh_listings_date_year', null, esc(d.year)));
       return wrap;
     }
-    if (d.month) wrap.appendChild(el('span', 'zl_emh_listings_date_month', null, esc(d.month)));
-    if (d.day != null) wrap.appendChild(el('div', 'zl_emh_listings_date_day', null, esc(d.day)));
-    if (d.year) wrap.appendChild(el('span', 'zl_emh_listings_date_year', null, esc(d.year)));
+    if (d.month) wrap.appendChild(el('div', 'zl_emh_listings_date_month', null, esc(d.month)));
+    if (d.day != null && d.day !== '') wrap.appendChild(el('div', 'zl_emh_listings_date_day', null, esc(d.day)));
+    if (d.year) wrap.appendChild(el('div', 'zl_emh_listings_date_year', null, esc(d.year)));
     return wrap;
   }
 
-  // ── tag chips → .zl_emh_listings_cont_tags > .zl_vc_listings_row_tag ──────────────
+  // ── tag chips → .cont_tags > .tag_cont > .chip_tag ──────────────────────────
   function tagRow(tags) {
-    var box = el('div', 'zl_emh_listings_cont_tags');
+    var cont = el('div', 'zl_emh_listings_cont_tags');
+    var box = el('div', 'zl_emh_listings_tag_cont');
     (tags || []).forEach(function (t) {
-      box.appendChild(el('div', 'zl_vc_listings_row_tag', null, '<span>' + esc(t) + '</span>'));
+      box.appendChild(el('span', 'zl_emh_listings_chip_tag', null, esc(t)));
     });
-    return box;
+    cont.appendChild(box);
+    return cont;
   }
 
-  // ── one meta cell (label + value) ────────────────────────────────────────────
-  function metaCell(label, value, extraCls) {
-    var cell = el('div', 'zl_emh_listings_meta_grp' + (extraCls ? ' ' + extraCls : ''));
-    cell.appendChild(el('span', 'zl_emh_listings_meta_label', null, esc(label)));
-    if (value instanceof Node) {
-      var v = el('div', 'zl_emh_listings_meta_value');
-      v.appendChild(value);
-      cell.appendChild(v);
-    } else {
-      cell.appendChild(el('span', 'zl_emh_listings_meta_value', null, esc(value)));
-    }
-    return cell;
+  // ── one meta group: eyebrow "[ Label ]" + data ──────────────────────────────
+  function metaGrp(label, dataNode, extraDataCls) {
+    var grp = el('div', 'zl_emh_listings_meta_grp');
+    var eb = el('div', 'zl_emh_listings_meta_eyebrow');
+    eb.appendChild(el('div', null, null, '[ ' + esc(label) + ' ]'));
+    grp.appendChild(eb);
+    var data = el('div', 'zl_emh_listings_meta_data' + (extraDataCls ? ' ' + extraDataCls : ''));
+    data.appendChild(dataNode instanceof Node ? dataNode : txt(dataNode));
+    grp.appendChild(data);
+    return grp;
   }
 
-  // ── genre value: chips or custom text ────────────────────────────────────────
-  function genreValue(item) {
-    if (item.customText) return document.createTextNode(item.customText);
-    var box = el('div', 'zl_emh_listings_cont_tags');
+  function genreChips(item) {
+    if (item.customText) return txt(item.customText);
+    var box = el('div', 'zl_emh_listings_genre_cont');
     (item.genres || []).forEach(function (g) {
-      box.appendChild(el('div', 'zl_vc_listings_chip_tag_large', null, '<span>' + esc(g) + '</span>'));
+      box.appendChild(el('span', 'zl_emh_listings_chip_tag_large', null, esc(g)));
     });
     return box;
   }
 
-  // ── meta grid (shared by tile + list) ────────────────────────────────────────
   function metaGrid(item) {
     var meta = el('div', 'zl_emh_listings_cont_meta');
-    if (item.location)     meta.appendChild(metaCell('Location', item.location));
-    if (item.capacityValue) meta.appendChild(metaCell(item.capacityLabel || 'Capacity', item.capacityValue));
-    if (item.venue)        meta.appendChild(metaCell('Venue', item.venue));
-    meta.appendChild(metaCell(item.genreLabel || 'Genre', genreValue(item), 'zl_vc_listings_genre_cont'));
-    if (item.customLabel && item.customText && (item.genreLabel || 'Genre') !== item.customLabel) {
-      meta.appendChild(metaCell(item.customLabel, item.customText));
-    }
+    if (item.location)      meta.appendChild(metaGrp('Location', txt(item.location)));
+    if (item.capacityValue) meta.appendChild(metaGrp(item.capacityLabel || 'Capacity', txt(item.capacityValue)));
+    if (item.venue)         meta.appendChild(metaGrp('Venue', txt(item.venue)));
+    meta.appendChild(metaGrp(item.genreLabel || 'Genre', genreChips(item), 'zl_emh_listings_genre_cont'));
     return meta;
   }
 
-  // ── image container with lazy hover video ────────────────────────────────────
+  // ── image + lazy hover video ─────────────────────────────────────────────────
   function imageBox(item) {
     var box = el('div', 'zl_emh_listings_cont_image');
+    if (item.image) box.appendChild(el('img', null, { src: item.image, alt: item.title || '', loading: 'lazy' }));
     if (item.vimeoId) {
+      var wrap = el('div', 'zl_emh_listings_video_wrap');
       var src = 'https://player.vimeo.com/video/' + encodeURIComponent(item.vimeoId) +
                 '?background=1&autoplay=1&muted=1&loop=1&autopause=0';
-      box.appendChild(el('iframe', 'zl_emh_listings_video', {
+      wrap.appendChild(el('iframe', null, {
         'data-src': src, frameborder: '0', allow: 'autoplay', tabindex: '-1', 'aria-hidden': 'true'
       }));
-    }
-    if (item.image) {
-      box.appendChild(el('img', null, { src: item.image, alt: item.title || '', loading: 'lazy' }));
+      box.appendChild(wrap);
     }
     return box;
   }
@@ -137,12 +118,50 @@
 
   function titleBlock(item) {
     var t = el('div', 'zl_emh_listings_cont_title');
-    t.appendChild(el('h3', 'zl_emh_listings_title', null, esc(item.title)));
+    t.appendChild(el('h1', 'zl_emh_listings_title', null, esc(item.title)));
     if (item.season) t.appendChild(el('span', 'zl_emh_listings_season', null, esc(item.season)));
     return t;
   }
 
-  // ── one card = .zl_emh_listings_parent (tile view + list view) ──────────────────
+  // ── footer: EST / Loc / Yrs + Instagram / Website + CONTACT ──────────────────
+  function footer(item) {
+    var f = el('div', 'zl_emh_listings_footer');
+    var data = el('div', 'zl_emh_listings_footer_data');
+
+    var estab = el('div', 'zl_emh_listings_data_estab_cont');
+    if (item.established) estab.appendChild(el('div', 'zl_emh_listings_text_estab', null, esc(item.established)));
+    var col = el('div', 'zl_emh_listings_data_col');
+    function infoRow(label, value) {
+      var row = el('div', 'zl_emh_listings_data_info_row');
+      row.appendChild(el('div', 'zl_emh_listings_data_label', null, esc(label)));
+      row.appendChild(el('div', 'zl_emh_listings_data_value', null, esc(value)));
+      return row;
+    }
+    if (item.location) col.appendChild(infoRow('Loc', item.location));
+    if (item.nthYear)  col.appendChild(infoRow('Yrs', item.nthYear));
+    estab.appendChild(col);
+    data.appendChild(estab);
+
+    var links = el('div', 'zl_emh_listings_data_links_row');
+    function footLink(label, href) {
+      var cont = el('div', 'zl_emh_listings_foot_link_cont');
+      cont.appendChild(el('a', 'zl_emh_listings_foot_link', { href: href, target: '_blank', rel: 'noopener' }, esc(label)));
+      return cont;
+    }
+    if (item.instagram) links.appendChild(footLink('Instagram', item.instagram));
+    if (item.website)   links.appendChild(footLink('Website', item.website));
+    data.appendChild(links);
+    f.appendChild(data);
+
+    var ctaCont = el('div', 'zl_emh_listings_cta_cont');
+    var cta = el('a', 'zl_emh_listings_footer_cta', { href: item.contactHref || '#' });
+    cta.appendChild(el('div', 'zl_emh_listings_cta_inner', null, 'CONTACT'));
+    ctaCont.appendChild(cta);
+    f.appendChild(ctaCont);
+    return f;
+  }
+
+  // ── one card = .zl_emh_listings_parent (single .repeater_view) ───────────────
   function card(item) {
     var parent = el('div', 'zl_emh_listings_parent', {
       'data-brand':      item.brand || '',
@@ -151,55 +170,35 @@
       'data-is-past':    item.isPast || '0',
       'data-start-date': item.startDate || ''
     });
+    var view = el('div', 'zl_emh_listings_repeater_view');
+    view.appendChild(imageBox(item));
 
-    // ── TILE VIEW ──
-    var tile = el('div', 'zl_vc_listings_repeater_view_tile');
-    tile.appendChild(imageBox(item));
     var inner = el('div', 'zl_emh_listings_inner');
-    var headT = el('div', 'zl_emh_listings_head');
-    headT.appendChild(dateBlock(item.date));
-    headT.appendChild(logoBox(item));
-    inner.appendChild(headT);
-    var contentT = el('div', 'zl_emh_listings_content');
-    var mainT = el('div', 'zl_emh_listings_cont_main');
-    mainT.appendChild(titleBlock(item));
-    if (item.tags && item.tags.length) mainT.appendChild(tagRow(item.tags));
-    mainT.appendChild(metaGrid(item));
-    contentT.appendChild(mainT);
-    inner.appendChild(contentT);
-    tile.appendChild(inner);
-    parent.appendChild(tile);
+    var head = el('div', 'zl_emh_listings_head');
+    head.appendChild(dateBlock(item.date));
+    head.appendChild(logoBox(item));
+    inner.appendChild(head);
 
-    // ── LIST VIEW ──
-    var list = el('div', 'zl_vc_listings_repeater_view_list');
-    list.appendChild(imageBox(item));
-    var headL = el('div', 'zl_emh_listings_head');
-    headL.appendChild(dateBlock(item.date));
-    headL.appendChild(logoBox(item));
-    list.appendChild(headL);
-    var contentL = el('div', 'zl_emh_listings_content');
-    var mainL = el('div', 'zl_emh_listings_cont_main');
-    mainL.appendChild(titleBlock(item));
-    if (item.tags && item.tags.length) mainL.appendChild(tagRow(item.tags));
-    contentL.appendChild(mainL);
-    contentL.appendChild(metaGrid(item));
-    list.appendChild(contentL);
-    parent.appendChild(list);
+    var content = el('div', 'zl_emh_listings_content');
+    var main = el('div', 'zl_emh_listings_cont_main');
+    main.appendChild(titleBlock(item));
+    if (item.tags && item.tags.length) main.appendChild(tagRow(item.tags));
+    content.appendChild(main);
+    content.appendChild(metaGrid(item));
+    inner.appendChild(content);
 
+    inner.appendChild(footer(item));
+    view.appendChild(inner);
+    parent.appendChild(view);
     return parent;
   }
 
   // ── ZFC filter bar ───────────────────────────────────────────────────────────
-  // Groups are built empty; the engine's buildZFCOptions() fills the chips from
-  // the cards' data-* attrs. The "past" group holds one static toggle chip.
   function filterGroup(key, label, isPast) {
     var g = el('div', 'zl_zfc_group' + (isPast ? ' zl_zfc_group--past' : ''), { 'data-zfc-filter': key });
     g.appendChild(el('span', 'zl_zfc_group_label', null, esc(label)));
     var chips = el('div', 'zl_zfc_chips');
-    if (isPast) {
-      var btn = el('button', 'zl_zfc_chip', { type: 'button', 'aria-pressed': 'false' }, 'Past Events');
-      chips.appendChild(btn);
-    }
+    if (isPast) chips.appendChild(el('button', 'zl_zfc_chip', { type: 'button', 'aria-pressed': 'false' }, 'Past Events'));
     g.appendChild(chips);
     return g;
   }
@@ -224,12 +223,10 @@
 
   function viewToggles() {
     var frag = document.createDocumentFragment();
-    var grid = el('div', 'zl_emh_cntrl_nav_btn zl_emh_cntrl_togl_grid', { role: 'button', 'aria-label': 'Grid view', title: 'Grid view' },
-      '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>');
-    var list = el('div', 'zl_emh_cntrl_nav_btn zl_emh_cntrl_togl_list', { role: 'button', 'aria-label': 'List view', title: 'List view' },
-      '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1" y="2" width="14" height="2.4" rx="1"/><rect x="1" y="7" width="14" height="2.4" rx="1"/><rect x="1" y="12" width="14" height="2.4" rx="1"/></svg>');
-    frag.appendChild(grid);
-    frag.appendChild(list);
+    frag.appendChild(el('div', 'zl_emh_cntrl_nav_btn zl_emh_cntrl_togl_grid', { role: 'button', 'aria-label': 'Grid view', title: 'Grid view' },
+      '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>'));
+    frag.appendChild(el('div', 'zl_emh_cntrl_nav_btn zl_emh_cntrl_togl_list', { role: 'button', 'aria-label': 'List view', title: 'List view' },
+      '<svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><rect x="1" y="2" width="14" height="2.4" rx="1"/><rect x="1" y="7" width="14" height="2.4" rx="1"/><rect x="1" y="12" width="14" height="2.4" rx="1"/></svg>'));
     return frag;
   }
 
@@ -243,7 +240,6 @@
     wrap.appendChild(filterGroup('past', 'Past', true));
     fltrWrap.appendChild(wrap);
     bar.appendChild(fltrWrap);
-
     var actions = el('div', 'zl_zfc_bar_actions');
     actions.appendChild(searchWidget());
     actions.appendChild(viewToggles());
@@ -251,43 +247,33 @@
     return bar;
   }
 
-  // ── mount everything ─────────────────────────────────────────────────────────
+  // ── mount ─────────────────────────────────────────────────────────────────────
   function render() {
     var root = document.getElementById('zoo-live') || document.body;
     root.innerHTML = '';
-
     if (!DATA.length) {
       root.appendChild(el('div', 'zoo-live-empty', null,
         'No published event properties found (or none passed to the shortcode).'));
-      reportHeight();
       return;
     }
-
     root.appendChild(buildBar());
-
     var repeater = el('div', 'zl_emh_listings_repeater zl-grid-view');
     DATA.forEach(function (item) { repeater.appendChild(card(item)); });
     root.appendChild(repeater);
-
-    // Expose a hook the bootstrap can await if it wants to confirm render ran.
     window.ZOO_LIVE_RENDERED = true;
   }
 
-  // Safety net: the CSS pre-hides cards + controls (opacity:0/visibility:hidden)
-  // and reveals them via the GSAP entrance animation. If that animation never
-  // completes — throttled requestAnimationFrame in a background tab, or GSAP
-  // failing to load — the sandbox would render blank. After a beat (long past
-  // the ~0.6s entrance), force-reveal anything still hidden that isn't
-  // intentionally filtered out. When the entrance DOES play, this is a no-op.
+  // Safety net: the CSS pre-hides cards/controls and reveals them via the GSAP
+  // entrance. If the ticker stalls the page would stay blank — force visible.
   function revealSafety() {
     var sel = '.zl_emh_listings_parent, .zl_zfc_group, .zl_zfc_bar_actions > *, [data-vc-anim]';
     if (window.gsap && gsap.killTweensOf) { try { gsap.killTweensOf(sel); } catch (e) {} }
-    document.querySelectorAll(sel).forEach(function (el) {
-      if (getComputedStyle(el).display === 'none') return; // keep filtered-out items hidden
-      el.style.opacity = '1';
-      el.style.visibility = 'visible';
-      el.style.transform = 'none'; // clear a frozen scale(0.8) from a stalled tween
-      el.style.scale = 'none';
+    document.querySelectorAll(sel).forEach(function (node) {
+      if (getComputedStyle(node).display === 'none') return;
+      node.style.opacity = '1';
+      node.style.visibility = 'visible';
+      node.style.transform = 'none';
+      node.style.scale = 'none';
     });
   }
 
