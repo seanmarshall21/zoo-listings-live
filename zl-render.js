@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.6.0
+ * v0.6.1
  * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,19 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.6.1 — 2026-08-04 — Two bugs Hubmeister flagged:
+ *                        (1) FILTER GHOST/OVERLAP — Isotope hides filtered-out cards via
+ *                            hiddenStyle:{opacity:0}; our opacity:1 !important (blank-page
+ *                            fix) overrode that, so filtered cards never left and survivors
+ *                            drew on top. Gated the card override to
+ *                            `.emh_listings_repeater:not(.isotope-active)` — i.e. only when
+ *                            Isotope is OFF (the exact condition the blank-page rule needs).
+ *                            When Isotope is ON it now owns opacity, so filtering (and the
+ *                            past-events exclusion) hide correctly.
+ *                        (2) PAST EVENTS shown by default — the site-wide
+ *                            window.emhListingsDefaults (zoo-defaults-output.php, wp_footer)
+ *                            sets past:true. Intercept that assignment and force past:false
+ *                            so /partner/ loads with past hidden (opt-in via the PAST pill).
  * v0.6.0 — 2026-08-04 — STOP FIGHTING ISOTOPE. On real desktop Chrome the engine runs
  *                        Isotope (repeater .isotope-active, absolute-positioned cards +
  *                        year separators). Our earlier "neutralise Isotope" overrides
@@ -85,8 +98,27 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.6.0';
+  var ZL_RENDER_VERSION = '0.6.1';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
+
+  // /partner/ default: PAST EVENTS HIDDEN (opt-in via the PAST pill). The site-wide
+  // window.emhListingsDefaults is output by zoo-defaults-output.php in wp_footer —
+  // AFTER this script — with past:true. Intercept the assignment (and patch it if it's
+  // already there) so the engine reads past:false and starts with past excluded. Only
+  // affects /partner/; this script isn't present on production /partnerships/.
+  (function forcePastHiddenDefault() {
+    try {
+      if (window.emhListingsDefaults && typeof window.emhListingsDefaults === 'object') {
+        window.emhListingsDefaults.past = false;
+      }
+      var _d = window.emhListingsDefaults;
+      Object.defineProperty(window, 'emhListingsDefaults', {
+        configurable: true,
+        get: function () { return _d; },
+        set: function (v) { if (v && typeof v === 'object') v.past = false; _d = v; }
+      });
+    } catch (e) {}
+  })();
 
   function el(tag, cls, attrs, html) {
     var n = document.createElement(tag);
@@ -345,18 +377,17 @@
     st.textContent =
       '#zoo-live{display:block;box-sizing:border-box;padding:48px 24px 80px;}' +
       '#zoo-live .emh_listings_container{max-width:var(--emh-max-width,1400px);margin:0 auto;}' +
-      // Guarantee visibility WITHOUT depending on the entrance animation — exactly how
-      // the production Oxygen page does it (.oxygen-builder-body .emh_listings_parent
-      // {opacity:1!important}). Site-wide CSS hides cards pre-animation
-      // (.emh_listings_repeater:not(.isotope-active) .emh_listings_parent{opacity:0})
-      // and #3866's entrance can stall on our injected nodes, leaving a blank page.
-      // SAFE for filtering: the engine hides filtered-out cards via inline display:none,
-      // which wins over opacity regardless.
-      '#zoo-live .emh_listings_parent,#zoo-live [data-vc-anim],#zoo-live .zfc_group,' +
-        '#zoo-live .zfc_bar_actions > *{opacity:1 !important;}' +
-      // Keep the repeater visible (below 769px the engine's non-Isotope view-switch
-      // fades it via gsap; a stalled ticker could otherwise leave it blank). When
-      // Isotope is active the engine skips the fade, so this is just a safety net.
+      // CARDS: force-visible ONLY when Isotope is NOT active. The blank-page rule we're
+      // countering is itself `:not(.isotope-active)` — once Isotope activates it OWNS
+      // opacity (hiddenStyle:{opacity:0} / visibleStyle:{opacity:1}) to hide filtered-out
+      // AND past cards. Forcing opacity:1 there made those hidden cards stay painted, so
+      // survivors drew on top (ghosting/overlap) and past events never left. Scoping the
+      // override to :not(.isotope-active) fixes both while still guaranteeing the
+      // non-Isotope (mobile / stalled-entrance) path never blanks.
+      '#zoo-live .emh_listings_repeater:not(.isotope-active) .emh_listings_parent{opacity:1 !important;}' +
+      // Bar controls are never Isotope items — always force-visible (entrance may stall).
+      '#zoo-live .zfc_group,#zoo-live .zfc_bar_actions > *{opacity:1 !important;}' +
+      // Keep the repeater container visible (it is never an Isotope-hidden item).
       '#zoo-live .emh_listings_repeater{opacity:1 !important;}' +
       // Dark-mode scrim: dim the site-wide shader so the page reads dark, matching the
       // Oxygen /partnerships/ page. Transparent in light mode; tinted to the theme bg in
