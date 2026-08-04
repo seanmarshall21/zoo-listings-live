@@ -1,7 +1,7 @@
 /**
  * zl-render.js
- * v0.5.5
- * 2026-08-03
+ * v0.5.6
+ * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
  * REAL production-class markup into #zoo-live from window.ZOO_LIVE_DATA, so the
@@ -10,6 +10,12 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.5.6 — 2026-08-04 — FIX blank page: after building the cards, call the production
+ *                        controller's window.emhListings_refresh() (retried until it
+ *                        exists) so the site-wide #3866 engine adopts our injected
+ *                        cards — runs the entrance (was leaving them at the CSS
+ *                        opacity:0 pre-animation state) AND wires filtering/search/
+ *                        toggles natively. Reveal-safety kept as a final fallback.
  * v0.5.5 — 2026-08-03 — Grid/list layout: stop overriding production card internals;
  *                        just set the repeater as a flex-wrap container + neutralise
  *                        Isotope so production's own 3-col grid, breakpoints, footer
@@ -39,7 +45,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.5';
+  var ZL_RENDER_VERSION = '0.5.6';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -364,6 +370,28 @@
     cards.forEach(function (c) { c.style.opacity = '1'; c.style.visibility = 'visible'; c.style.transform = 'none'; });
   }
 
+  // Hand our freshly-injected cards to the site-wide production controller (#3866).
+  // Its init runs on DOMContentLoaded, BEFORE our async GitHub fetch resolves, so it
+  // never sees our cards on its own — they stay stuck at the CSS entrance state
+  // (.emh_listings_repeater:not(.isotope-active) .emh_listings_parent{opacity:0}).
+  // Calling emhListings_refresh() makes it re-scan the DOM: it runs the entrance
+  // animation AND wires filtering / search / grid-list toggles on our cards natively.
+  // Retried a few times because the controller script may still be loading.
+  function activateProductionEngine(attempt) {
+    attempt = attempt || 0;
+    if (typeof window.emhListings_refresh === 'function') {
+      try { window.emhListings_refresh(); } catch (e) {}
+      // One more pass on the next frame — some builds need a second nudge after
+      // Isotope/GSAP have initialised on the new nodes.
+      try { requestAnimationFrame(function () { try { window.emhListings_refresh(); } catch (e) {} }); } catch (e) {}
+      return;
+    }
+    if (attempt < 12) setTimeout(function () { activateProductionEngine(attempt + 1); }, 250);
+  }
+
   render();
-  setTimeout(revealSafetyIfTotallyBlank, 2500);
+  activateProductionEngine();
+  // Final fallback: if the controller never showed up (e.g. #3866 not on this page),
+  // guarantee the cards aren't left invisible.
+  setTimeout(revealSafetyIfTotallyBlank, 3000);
 })();
