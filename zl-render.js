@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.5.6
+ * v0.5.7
  * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,15 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.5.7 — 2026-08-04 — FIX blank page (robust): force opacity:1 !important on our
+ *                        cards/controls — mirroring production's own Oxygen override
+ *                        (.oxygen-builder-body .emh_listings_parent{opacity:1!important})
+ *                        so /partner/ behaves like /partnerships/ and does NOT depend
+ *                        on the entrance animation (which stalled, leaving cards at the
+ *                        CSS pre-animation opacity:0). Verified SAFE for filtering: the
+ *                        engine hides filtered-out cards via inline display:none, which
+ *                        wins over opacity regardless. emhListings_refresh() call kept
+ *                        (v0.5.6) to wire filter/search/toggle interactivity.
  * v0.5.6 — 2026-08-04 — FIX blank page: after building the cards, call the production
  *                        controller's window.emhListings_refresh() (retried until it
  *                        exists) so the site-wide #3866 engine adopts our injected
@@ -45,7 +54,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.6';
+  var ZL_RENDER_VERSION = '0.5.7';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -305,6 +314,15 @@
     st.textContent =
       '#zoo-live{display:block;box-sizing:border-box;padding:48px 24px 80px;}' +
       '#zoo-live .emh_listings_container{max-width:var(--emh-max-width,1400px);margin:0 auto;}' +
+      // Guarantee visibility WITHOUT depending on the entrance animation — exactly how
+      // the production Oxygen page does it (.oxygen-builder-body .emh_listings_parent
+      // {opacity:1!important}). Site-wide CSS hides cards pre-animation
+      // (.emh_listings_repeater:not(.isotope-active) .emh_listings_parent{opacity:0})
+      // and #3866's entrance can stall on our injected nodes, leaving a blank page.
+      // SAFE for filtering: the engine hides filtered-out cards via inline display:none,
+      // which wins over opacity regardless.
+      '#zoo-live .emh_listings_parent,#zoo-live [data-vc-anim],#zoo-live .zfc_group,' +
+        '#zoo-live .zfc_bar_actions > *{opacity:1 !important;}' +
       // Theme the inline brand-logo SVG (paths often have no fill → inherit currentColor).
       '#zoo-live .emh_listings_item_logo svg,#zoo-live .emh_listings_item_logo svg path{fill:currentColor;}' +
       '#zoo-live .emh_listings_item_logo svg{max-height:32px;width:auto;height:auto;display:block;}' +
