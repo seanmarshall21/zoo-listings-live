@@ -1,8 +1,10 @@
 /**
  * zoo-live-render.js
- * v0.1.1
+ * v0.1.2
  * 2026-08-03
  *
+ * v0.1.2 — removed the literal bracketed shortcode token from the header comment;
+ *          WordPress was recursively re-expanding it inside the inlined script.
  * v0.1.1 — revealSafety() fallback: force-reveal cards/controls if the GSAP
  *          entrance animation doesn't complete (throttled rAF / offscreen iframe /
  *          GSAP load failure), so the sandbox never renders blank.
@@ -11,8 +13,10 @@
  *
  * Runs INSIDE the sandbox iframe (Page B), BEFORE vc-listings.js (the engine).
  * Reads window.ZOO_LIVE_DATA (a plain array of listing objects injected by the
- * WordPress [zoo_listings_live] shortcode) and builds the exact DOM contract the
- * production engine expects:
+ * WordPress zoo_listings_live shortcode) and builds the exact DOM contract the
+ * production engine expects. (Do NOT write the shortcode in [brackets] anywhere
+ * in this file — it gets inlined into the page and WordPress would recursively
+ * re-expand it, corrupting the bootstrap script.)
  *
  *   .zfc_bar_wrap  → .zfc_bar_fltr_wrap → .zfc_wrap → .zfc_group[data-zfc-filter]
  *                    .zfc_bar_actions   → search widget + grid/list toggles
