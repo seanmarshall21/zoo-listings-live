@@ -287,6 +287,12 @@
       // Theme the inline brand-logo SVG (paths often have no fill → inherit currentColor).
       '#zoo-live .emh_listings_item_logo svg,#zoo-live .emh_listings_item_logo svg path{fill:currentColor;}' +
       '#zoo-live .emh_listings_item_logo svg{max-height:32px;width:auto;height:auto;display:block;}' +
+      // Image layout: fixed-size box, cover regardless of the upload aspect ratio,
+      // centered, overflow cropped. A neutral fill covers containers with no photo yet.
+      '#zoo-live .emh_listings_cont_image{overflow:hidden;position:relative;' +
+        'background:color-mix(in srgb,var(--zoo-text,#888) 7%,transparent);}' +
+      '#zoo-live .emh_listings_cont_image img{position:absolute;inset:0;width:100%;height:100%;' +
+        'object-fit:cover;object-position:center center;display:block;}' +
       '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
