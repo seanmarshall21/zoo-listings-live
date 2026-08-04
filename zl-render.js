@@ -114,7 +114,14 @@
 
   function logoBox(item) {
     var box = el('div', 'emh_listings_cont_logo');
-    if (item.logo) box.appendChild(el('img', null, { src: item.logo, alt: item.brand || '' }));
+    if (item.logoSvg) {
+      // Inline SVG (like production) so it's themed via currentColor.
+      var inner = el('div', 'emh_listings_item_logo');
+      inner.innerHTML = item.logoSvg;
+      box.appendChild(inner);
+    } else if (item.logo) {
+      box.appendChild(el('img', null, { src: item.logo, alt: item.brand || '' }));
+    }
     return box;
   }
 
@@ -277,6 +284,9 @@
     st.textContent =
       '#zoo-live{display:block;box-sizing:border-box;padding:48px 24px 80px;}' +
       '#zoo-live .emh_listings_container{max-width:var(--emh-max-width,1400px);margin:0 auto;}' +
+      // Theme the inline brand-logo SVG (paths often have no fill → inherit currentColor).
+      '#zoo-live .emh_listings_item_logo svg,#zoo-live .emh_listings_item_logo svg path{fill:currentColor;}' +
+      '#zoo-live .emh_listings_item_logo svg{max-height:32px;width:auto;height:auto;display:block;}' +
       '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
