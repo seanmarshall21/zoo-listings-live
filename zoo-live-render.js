@@ -1,7 +1,11 @@
 /**
  * zoo-live-render.js
- * v0.1.0
+ * v0.1.1
  * 2026-08-03
+ *
+ * v0.1.1 — revealSafety() fallback: force-reveal cards/controls if the GSAP
+ *          entrance animation doesn't complete (throttled rAF / offscreen iframe /
+ *          GSAP load failure), so the sandbox never renders blank.
  *
  * Zoo Agency — Live Sandbox renderer.
  *
@@ -278,8 +282,32 @@
     } catch (e) {}
   }
 
+  // Safety net: production CSS pre-hides cards + controls (opacity:0/visibility:
+  // hidden) and reveals them via the GSAP entrance animation. If that animation
+  // never completes — throttled requestAnimationFrame in a background tab or an
+  // offscreen iframe, or GSAP failing to load — the sandbox would render blank.
+  // After a beat (long past the ~0.6s entrance), force-reveal anything still
+  // hidden that isn't intentionally filtered out (display:none). When the
+  // entrance DOES play, this is a harmless no-op.
+  function revealSafety() {
+    var sel = '.emh_listings_parent, .zfc_group, .zfc_bar_actions > *, [data-vc-anim]';
+    // Kill any stuck entrance tweens so GSAP can't re-write opacity:0 on a later
+    // tick (a partially-frozen ticker leaves the tween mid-flight). On a healthy
+    // load the entrance is long done by now, so there is nothing to kill.
+    if (window.gsap && gsap.killTweensOf) { try { gsap.killTweensOf(sel); } catch (e) {} }
+    document.querySelectorAll(sel).forEach(function (el) {
+      if (getComputedStyle(el).display === 'none') return; // keep filtered-out items hidden
+      el.style.opacity = '1';
+      el.style.visibility = 'visible';
+      el.style.transform = 'none'; // clear a frozen scale(0.8) from a stalled tween
+      el.style.scale = 'none';
+    });
+    reportHeight();
+  }
+
   function watchHeight() {
     reportHeight();
+    setTimeout(revealSafety, 1600);
     if ('ResizeObserver' in window) {
       var ro = new ResizeObserver(function () { reportHeight(); });
       ro.observe(document.documentElement);
