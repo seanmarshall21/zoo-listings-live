@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.5.9
+ * v0.6.0
  * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,19 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.6.0 — 2026-08-04 — STOP FIGHTING ISOTOPE. On real desktop Chrome the engine runs
+ *                        Isotope (repeater .isotope-active, absolute-positioned cards +
+ *                        year separators). Our earlier "neutralise Isotope" overrides
+ *                        (v0.5.5) forced .emh_listings_parent to position:relative /
+ *                        transform:none and the repeater to height:auto — which pushed
+ *                        cards into normal flow while the year separator stayed Isotope-
+ *                        absolute at top:0, so it floated over the first card and vanished
+ *                        on view-switch. Removed those overrides AND our own view-toggle
+ *                        handler (v0.5.8). The site-wide engine now owns layout, view
+ *                        switching and year separators natively via Isotope — exactly like
+ *                        /partnerships/. (Its setView/filters use _iso.arrange, NOT the
+ *                        gsap fade, when Isotope is active, so no stall.) Kept: opacity:1
+ *                        !important safety, dark scrim, image-cover, icon sizes, logo theme.
  * v0.5.9 — 2026-08-04 — Dark scrim: use background-color (not the background shorthand)
  *                        + explicit transparent in .theme-light, so the light<->dark
  *                        transition is clean and never sticks dim.
@@ -72,7 +85,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.9';
+  var ZL_RENDER_VERSION = '0.6.0';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -341,9 +354,9 @@
       // which wins over opacity regardless.
       '#zoo-live .emh_listings_parent,#zoo-live [data-vc-anim],#zoo-live .zfc_group,' +
         '#zoo-live .zfc_bar_actions > *{opacity:1 !important;}' +
-      // The engine's view-switch fades the repeater via gsap; if the ticker stalls the
-      // fade-back-in never runs → blank. Pin it visible; our own toggle handler does the
-      // class swap directly (see wireViewToggle).
+      // Keep the repeater visible (below 769px the engine's non-Isotope view-switch
+      // fades it via gsap; a stalled ticker could otherwise leave it blank). When
+      // Isotope is active the engine skips the fade, so this is just a safety net.
       '#zoo-live .emh_listings_repeater{opacity:1 !important;}' +
       // Dark-mode scrim: dim the site-wide shader so the page reads dark, matching the
       // Oxygen /partnerships/ page. Transparent in light mode; tinted to the theme bg in
@@ -371,14 +384,12 @@
       '#zoo-live .emh_search_clear_icon svg{width:11px;height:11px;}' +
       '#zoo-live .emh_cntrl_togl_grid svg,#zoo-live .emh_cntrl_togl_list svg{width:16px;height:16px;}' +
       // ── Layout ───────────────────────────
-      // Our cards are DIRECT children of .emh_listings_repeater (production nests
-      // them in Oxygen's .oxy-posts), so we only: make the repeater a flex-wrap
-      // container and neutralise Isotope's absolute positioning so cards flow.
-      // Everything else — 3-col grid (cards are 32% wide), 3→2→1 breakpoints, meta
-      // margin-top:auto pinning the footer to the bottom, list layout — is
-      // production's own CSS, so grid AND list match /partnerships/.
-      '#zoo-live .emh_listings_repeater{display:flex !important;flex-flow:row wrap !important;gap:var(--emh-card-gap,20px) !important;align-content:flex-start !important;height:auto !important;}' +
-      '#zoo-live .emh_listings_parent{position:relative !important;left:auto !important;top:auto !important;right:auto !important;bottom:auto !important;transform:none !important;margin:0 !important;}' +
+      // NOTHING here. Layout is 100% production's: on desktop the engine runs Isotope
+      // (repeater .isotope-active, cards + year separators absolutely positioned) and
+      // below 769px it falls back to production's own .grid-view / .list-view flex CSS.
+      // We must NOT override .emh_listings_repeater height or .emh_listings_parent
+      // position/transform — doing so pushed cards into flow while the year separator
+      // stayed Isotope-absolute at top:0 → overlap + vanishing seps. See v0.6.0 note.
       '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
@@ -418,7 +429,9 @@
     });
     if (anyVisible) return; // entrance worked and/or filtering is active — leave it alone
     if (window.gsap && gsap.killTweensOf) { try { gsap.killTweensOf('#zoo-live .emh_listings_parent'); } catch (e) {} }
-    cards.forEach(function (c) { c.style.opacity = '1'; c.style.visibility = 'visible'; c.style.transform = 'none'; });
+    // Only opacity/visibility — do NOT touch transform (Isotope positions cards via
+    // transform; clearing it would scramble the layout).
+    cards.forEach(function (c) { c.style.opacity = '1'; c.style.visibility = 'visible'; });
   }
 
   // Hand our freshly-injected cards to the site-wide production controller (#3866).
@@ -440,30 +453,10 @@
     if (attempt < 12) setTimeout(function () { activateProductionEngine(attempt + 1); }, 250);
   }
 
-  // ── View toggle (own handler — the engine's setView hides its class-swap behind a
-  // gsap onComplete that never fires when the ticker is stalled on this page). We swap
-  // the .grid-view/.list-view class directly, then let the engine re-layout + rebuild
-  // year separators via emhListings_refresh() (its animate=false path is gsap-free).
-  function setViewDirect(view) {
-    var rep = document.querySelector('#zoo-live .emh_listings_repeater');
-    if (!rep) return;
-    rep.classList.remove('grid-view', 'list-view');
-    rep.classList.add(view === 'list' ? 'list-view' : 'grid-view');
-    var g = document.querySelector('#zoo-live .emh_cntrl_togl_grid');
-    var l = document.querySelector('#zoo-live .emh_cntrl_togl_list');
-    if (g) g.classList.toggle('emh_active', view === 'grid');
-    if (l) l.classList.toggle('emh_active', view === 'list');
-    try { localStorage.setItem('emh_listings_view', view); } catch (e) {}
-    // Re-layout + rebuild the year separators for the new view.
-    try { if (typeof window.emhListings_refresh === 'function') window.emhListings_refresh(); } catch (e) {}
-  }
-
-  function wireViewToggle() {
-    var g = document.querySelector('#zoo-live .emh_cntrl_togl_grid');
-    var l = document.querySelector('#zoo-live .emh_cntrl_togl_list');
-    if (g && !g.__zlBound) { g.__zlBound = true; g.addEventListener('click', function () { setViewDirect('grid'); }); }
-    if (l && !l.__zlBound) { l.__zlBound = true; l.addEventListener('click', function () { setViewDirect('list'); }); }
-  }
+  // NOTE (v0.6.0): the view toggle is handled NATIVELY by the engine's initViewToggle
+  // + setView. When Isotope is active setView uses _iso.arrange (no gsap) and rebuilds
+  // the year separators correctly, so we no longer bind our own handler (which fought
+  // Isotope and made the separators vanish on switch).
 
   // Dark-mode scrim element (styled in injectHostStyle; visible only in .theme-dark).
   function injectDarkScrim() {
@@ -476,11 +469,7 @@
 
   render();
   injectDarkScrim();
-  wireViewToggle();
   activateProductionEngine();
-  // Re-assert our control bindings after the engine has finished its own init pass.
-  setTimeout(wireViewToggle, 400);
-  setTimeout(wireViewToggle, 1200);
   // Final fallback: if the controller never showed up (e.g. #3866 not on this page),
   // guarantee the cards aren't left invisible.
   setTimeout(revealSafetyIfTotallyBlank, 3000);
