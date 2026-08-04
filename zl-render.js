@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.5.7
+ * v0.5.8
  * 2026-08-04
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,21 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.5.8 — 2026-08-04 — Three fixes, all rooted in the stalled GSAP ticker on this
+ *                        page (same cause as the v0.5.7 blank page):
+ *                        (1) VIEW TOGGLE — the engine's setView() does its real work
+ *                            (class swap + year-sep rebuild) inside a gsap onComplete
+ *                            that never fires when the ticker is stalled, so grid/list
+ *                            never switched and year separators vanished on switch. We
+ *                            now bind our OWN grid/list handlers that swap .grid-view/
+ *                            .list-view directly (no gsap) and call emhListings_refresh()
+ *                            to rebuild the year separators for the new view.
+ *                        (2) Force the repeater opacity:1 !important so a stalled
+ *                            view-switch fade can never leave it blank.
+ *                        (3) DARK MODE — inject a fixed scrim that dims the site-wide
+ *                            shader when html.theme-dark, so /partner/ darkens like the
+ *                            Oxygen /partnerships/ page (whose dark overlay lives in the
+ *                            page, not site-wide).
  * v0.5.7 — 2026-08-04 — FIX blank page (robust): force opacity:1 !important on our
  *                        cards/controls — mirroring production's own Oxygen override
  *                        (.oxygen-builder-body .emh_listings_parent{opacity:1!important})
@@ -54,7 +69,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.7';
+  var ZL_RENDER_VERSION = '0.5.8';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -323,6 +338,18 @@
       // which wins over opacity regardless.
       '#zoo-live .emh_listings_parent,#zoo-live [data-vc-anim],#zoo-live .zfc_group,' +
         '#zoo-live .zfc_bar_actions > *{opacity:1 !important;}' +
+      // The engine's view-switch fades the repeater via gsap; if the ticker stalls the
+      // fade-back-in never runs → blank. Pin it visible; our own toggle handler does the
+      // class swap directly (see wireViewToggle).
+      '#zoo-live .emh_listings_repeater{opacity:1 !important;}' +
+      // Dark-mode scrim: dim the site-wide shader so the page reads dark, matching the
+      // Oxygen /partnerships/ page. Transparent in light mode; tinted to the theme bg in
+      // dark. Fixed + behind content (the shader canvas is z-index:-1; this sits just in
+      // front of it and behind everything in #zoo-live).
+      '#zoo-live-dark-scrim{position:fixed;inset:0;z-index:-1;pointer-events:none;' +
+        'background:transparent;transition:background .35s ease;}' +
+      'html.theme-dark #zoo-live-dark-scrim{' +
+        'background:color-mix(in srgb,var(--zoo-bg,#282828) 82%,transparent);}' +
       // Theme the inline brand-logo SVG (paths often have no fill → inherit currentColor).
       '#zoo-live .emh_listings_item_logo svg,#zoo-live .emh_listings_item_logo svg path{fill:currentColor;}' +
       '#zoo-live .emh_listings_item_logo svg{max-height:32px;width:auto;height:auto;display:block;}' +
@@ -407,8 +434,47 @@
     if (attempt < 12) setTimeout(function () { activateProductionEngine(attempt + 1); }, 250);
   }
 
+  // ── View toggle (own handler — the engine's setView hides its class-swap behind a
+  // gsap onComplete that never fires when the ticker is stalled on this page). We swap
+  // the .grid-view/.list-view class directly, then let the engine re-layout + rebuild
+  // year separators via emhListings_refresh() (its animate=false path is gsap-free).
+  function setViewDirect(view) {
+    var rep = document.querySelector('#zoo-live .emh_listings_repeater');
+    if (!rep) return;
+    rep.classList.remove('grid-view', 'list-view');
+    rep.classList.add(view === 'list' ? 'list-view' : 'grid-view');
+    var g = document.querySelector('#zoo-live .emh_cntrl_togl_grid');
+    var l = document.querySelector('#zoo-live .emh_cntrl_togl_list');
+    if (g) g.classList.toggle('emh_active', view === 'grid');
+    if (l) l.classList.toggle('emh_active', view === 'list');
+    try { localStorage.setItem('emh_listings_view', view); } catch (e) {}
+    // Re-layout + rebuild the year separators for the new view.
+    try { if (typeof window.emhListings_refresh === 'function') window.emhListings_refresh(); } catch (e) {}
+  }
+
+  function wireViewToggle() {
+    var g = document.querySelector('#zoo-live .emh_cntrl_togl_grid');
+    var l = document.querySelector('#zoo-live .emh_cntrl_togl_list');
+    if (g && !g.__zlBound) { g.__zlBound = true; g.addEventListener('click', function () { setViewDirect('grid'); }); }
+    if (l && !l.__zlBound) { l.__zlBound = true; l.addEventListener('click', function () { setViewDirect('list'); }); }
+  }
+
+  // Dark-mode scrim element (styled in injectHostStyle; visible only in .theme-dark).
+  function injectDarkScrim() {
+    if (document.getElementById('zoo-live-dark-scrim')) return;
+    var s = document.createElement('div');
+    s.id = 'zoo-live-dark-scrim';
+    s.setAttribute('aria-hidden', 'true');
+    (document.body || document.documentElement).appendChild(s);
+  }
+
   render();
+  injectDarkScrim();
+  wireViewToggle();
   activateProductionEngine();
+  // Re-assert our control bindings after the engine has finished its own init pass.
+  setTimeout(wireViewToggle, 400);
+  setTimeout(wireViewToggle, 1200);
   // Final fallback: if the controller never showed up (e.g. #3866 not on this page),
   // guarantee the cards aren't left invisible.
   setTimeout(revealSafetyIfTotallyBlank, 3000);
