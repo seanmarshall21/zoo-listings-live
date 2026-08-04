@@ -1,30 +1,38 @@
 /**
  * zl-render.js
- * v0.4.0 — REAL production classes (no namespace); relies on site-wide #3866/#3867.
- * v0.3.0
+ * v0.5.3
  * 2026-08-03
  *
- * v0.4.0 — REAL production classes (no namespace); relies on site-wide #3866/#3867.
- * v0.3.0 — Renderer rewritten to emit the EXACT current production card DOM
- *          (extracted live from /partnerships/): single .emh_listings_repeater_view
- *          wrapper, .emh_listings_tag_cont > .emh_listings_chip_tag chips,
- *          .emh_listings_meta_eyebrow + .emh_listings_meta_data groups,
- *          .emh_listings_genre_cont > .emh_listings_chip_tag_large, and the full
- *          .emh_listings_footer (EST/Loc/Yrs + Instagram/Website + CONTACT cta).
- *          The prior version used stale class names from layer-stack-v2, so the CSS
- *          couldn't match it. This makes the namespaced production CSS fully apply.
- * v0.2.0 — REAL IN-PAGE ELEMENTS (no iframe). Namespaced classes (zl_*).
- * v0.1.x — earlier iframe-era versions.
+ * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
+ * REAL production-class markup into #zoo-live from window.ZOO_LIVE_DATA, so the
+ * site-wide production CSS (#3867 + Oxygen) and controller (#3866) style + wire it.
+ * The running version is exposed at runtime: data-zl-render-version on #zoo-live
+ * and a console.info line — so the live version can be verified, not just claimed.
  *
- * Zoo Agency — Live Sandbox renderer. Runs in the host page BEFORE zl-listings.js.
- * Reads window.ZOO_LIVE_DATA and builds real, namespaced (zl_*) elements into
- * #zoo-live, then the engine wires filters / view toggle / search / hover video.
+ * Changelog:
+ * v0.5.3 — 2026-08-03 — Control icon sizes scoped down (search was 55px); EST year
+ *                        formatted as "[ EST.YYYY ]" in the footer. (EST/YRS now
+ *                        populate once the PHP reads vc_em_estd — snippet v0.3.1.)
+ * v0.5.2 — 2026-08-03 — Image layout: reinforce cover (fixed box, object-fit:cover,
+ *                        center) + neutral fill for empty (no-photo) containers.
+ * v0.5.1 — 2026-08-03 — Brand logo rendered as inline SVG (item.logoSvg) themed via
+ *                        currentColor, instead of <img>.
+ * v0.5.0 — 2026-08-03 — Fix filter overlap (removed !important reveal that kept
+ *                        filtered-out cards visible); wrap in .emh_listings_container
+ *                        (max-width) + top padding; real dropdown filter labels
+ *                        (.zfc_drpdwn chevron + hover underline); reveal is now a
+ *                        strict last-resort only when every card is invisible.
+ * v0.4.0 — REAL production classes (no namespace); relies on site-wide #3866/#3867.
+ * v0.3.0 — Rewritten to emit the exact production card DOM (extracted live).
+ * v0.2.0 — Real in-page elements (no iframe); namespaced classes (superseded by v0.4).
+ * v0.1.x — earlier iframe-era versions.
  *
  * (Do NOT write the shortcode in [brackets] anywhere in this file.)
  */
 (function () {
   'use strict';
 
+  var ZL_RENDER_VERSION = '0.5.3';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -138,7 +146,7 @@
     var data = el('div', 'emh_listings_footer_data');
 
     var estab = el('div', 'emh_listings_data_estab_cont');
-    if (item.established) estab.appendChild(el('div', 'emh_listings_text_estab', null, esc(item.established)));
+    if (item.established) estab.appendChild(el('div', 'emh_listings_text_estab', null, '[ EST.' + esc(item.established) + ' ]'));
     var col = el('div', 'emh_listings_data_col');
     function infoRow(label, value) {
       var row = el('div', 'emh_listings_data_info_row');
@@ -293,6 +301,11 @@
         'background:color-mix(in srgb,var(--zoo-text,#888) 7%,transparent);}' +
       '#zoo-live .emh_listings_cont_image img{position:absolute;inset:0;width:100%;height:100%;' +
         'object-fit:cover;object-position:center center;display:block;}' +
+      // Control icons: production sizes some to 55px/20px (built for sprite <use>);
+      // our inline SVGs need sane sizes. Scoped so /partnerships/ is untouched.
+      '#zoo-live .emh_search_toggle_icon svg{width:18px;height:18px;}' +
+      '#zoo-live .emh_search_clear_icon svg{width:11px;height:11px;}' +
+      '#zoo-live .emh_cntrl_togl_grid svg,#zoo-live .emh_cntrl_togl_list svg{width:16px;height:16px;}' +
       '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
@@ -300,6 +313,8 @@
   function render() {
     injectHostStyle();
     var root = document.getElementById('zoo-live') || document.body;
+    root.setAttribute('data-zl-render-version', ZL_RENDER_VERSION);
+    try { console.info('[zoo-live] renderer v' + ZL_RENDER_VERSION); } catch (e) {}
     root.innerHTML = '';
     if (!DATA.length) {
       root.appendChild(el('div', 'zoo-live-empty', null,
