@@ -250,7 +250,21 @@
   }
 
   // ── mount ─────────────────────────────────────────────────────────────────────
+  // Production CSS pre-hides .emh_listings_parent (opacity:0) and reveals via the
+  // GSAP entrance. Scoped to #zoo-live so we never touch production /partnerships/,
+  // force our sandbox cards + controls visible regardless of the animation.
+  function injectRevealStyle() {
+    if (document.getElementById('zoo-live-reveal')) return;
+    var st = document.createElement('style');
+    st.id = 'zoo-live-reveal';
+    st.textContent =
+      '#zoo-live .emh_listings_parent,#zoo-live .zfc_group,#zoo-live .zfc_bar_actions > *,#zoo-live [data-vc-anim]' +
+      '{opacity:1 !important;visibility:visible !important;}';
+    (document.head || document.documentElement).appendChild(st);
+  }
+
   function render() {
+    injectRevealStyle();
     var root = document.getElementById('zoo-live') || document.body;
     root.innerHTML = '';
     if (!DATA.length) {
