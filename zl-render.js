@@ -1,6 +1,6 @@
 /**
  * zl-render.js
- * v0.5.3
+ * v0.5.4
  * 2026-08-03
  *
  * Zoo Agency — Live Sandbox renderer (Page B). Runs in the host page and builds
@@ -10,6 +10,9 @@
  * and a console.info line — so the live version can be verified, not just claimed.
  *
  * Changelog:
+ * v0.5.4 — 2026-08-03 — Responsive TILE GRID always (auto-fill, cards size to content,
+ *                        never crop); neutralises Isotope absolute layout + list view;
+ *                        view-toggle buttons hidden.
  * v0.5.3 — 2026-08-03 — Control icon sizes scoped down (search was 55px); EST year
  *                        formatted as "[ EST.YYYY ]" in the footer. (EST/YRS now
  *                        populate once the PHP reads vc_em_estd — snippet v0.3.1.)
@@ -32,7 +35,7 @@
 (function () {
   'use strict';
 
-  var ZL_RENDER_VERSION = '0.5.3';
+  var ZL_RENDER_VERSION = '0.5.4';
   var DATA = Array.isArray(window.ZOO_LIVE_DATA) ? window.ZOO_LIVE_DATA : [];
 
   function el(tag, cls, attrs, html) {
@@ -306,6 +309,20 @@
       '#zoo-live .emh_search_toggle_icon svg{width:18px;height:18px;}' +
       '#zoo-live .emh_search_clear_icon svg{width:11px;height:11px;}' +
       '#zoo-live .emh_cntrl_togl_grid svg,#zoo-live .emh_cntrl_togl_list svg{width:16px;height:16px;}' +
+      // ── Responsive TILE GRID (no list view, no Isotope absolute layout) ──────
+      // Cards auto-fill columns and size to their own content, so it scales at any
+      // width and never crops. !important neutralises Isotope's inline positioning
+      // and the list-view rules while leaving filtering (display:none) intact.
+      '#zoo-live .emh_listings_repeater{display:grid !important;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--emh-card-gap,20px) !important;height:auto !important;}' +
+      '#zoo-live .emh_listings_parent{position:relative !important;left:auto !important;top:auto !important;right:auto !important;bottom:auto !important;width:auto !important;height:auto !important;margin:0 !important;transform:none !important;display:flex !important;flex-direction:column !important;}' +
+      '#zoo-live .emh_listings_repeater_view{display:flex !important;flex-direction:column !important;width:100% !important;min-height:0 !important;height:auto !important;}' +
+      '#zoo-live .emh_listings_cont_image{width:100% !important;max-width:none !important;aspect-ratio:3 / 2 !important;align-self:auto !important;flex:none !important;}' +
+      '#zoo-live .emh_listings_inner{display:flex !important;flex-direction:column !important;width:100% !important;height:auto !important;padding:20px 20px 26px !important;align-self:auto !important;gap:14px !important;overflow:visible !important;}' +
+      '#zoo-live .emh_listings_head{display:flex !important;flex-direction:row !important;width:100% !important;max-width:none !important;min-width:0 !important;padding-right:0 !important;align-items:flex-start !important;justify-content:space-between !important;flex:none !important;}' +
+      '#zoo-live .emh_listings_content{width:100% !important;flex:none !important;}' +
+      '#zoo-live .emh_listings_footer{width:100% !important;max-width:none !important;min-width:0 !important;margin-left:0 !important;padding-left:0 !important;padding-top:16px !important;align-items:stretch !important;flex:none !important;}' +
+      // The view-toggle buttons are moot in a single responsive grid — hide them.
+      '#zoo-live .emh_cntrl_togl_grid,#zoo-live .emh_cntrl_togl_list{display:none !important;}' +
       '#zoo-live .zoo-live-empty{padding:40px;font-family:acumin-pro,sans-serif;color:var(--zoo-mid);text-align:center;}';
     (document.head || document.documentElement).appendChild(st);
   }
